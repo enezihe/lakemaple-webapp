@@ -42,23 +42,13 @@ How to Deploy
    az group create -n rg-lakemaple-bicep -l canadacentral
 
 2) Deploy the Bicep template:
-   az deployment group create -g rg-lakemaple-bicep -f main.bicep -p main.parameters.json
+   az deployment group create -g rg-lakemaple-bicep -f bicep/main.bicep -p bicep/main.parameters.json
 
 CI/CD Options (Implementation Approach)
 The deployment command can be executed from an automation pipeline to standardize releases across environments. A lightweight approach is a repository-native workflow (e.g., GitHub Actions) that authenticates to Azure and runs the same deployment command on versioned infrastructure changes. An enterprise-oriented alternative is Azure DevOps Pipelines, which provides stronger centralized governance (environments, approvals, and audit controls) at the cost of additional platform configuration.
 
+CI Automation (GitHub Actions)
+A GitHub Actions workflow is included to validate the infrastructure template on every push. The pipeline compiles the Bicep template (az bicep build) to catch syntax and dependency issues early and to keep infrastructure changes reviewable and repeatable. Automated Azure deployments can be enabled by adding an Azure identity (service principal or federated credentials) with appropriate RBAC permissions and then running the same az deployment group create command in the workflow.
+
 Data Movement / Transformation Approach
 Operational data lives in Azure SQL while static content lives in Azure Storage. For reporting or downstream analytics, a pragmatic approach is to periodically extract or incrementally capture SQL changes, land data into a storage zone, and apply transformations as needs evolve. This keeps the transactional database optimized for application workloads while enabling flexible reporting pipelines over time.
-
-Deployment Evidence
-- Web App URL: https://lakemaple-web-d7o3e2gevknog.azurewebsites.net
-- SQL Server FQDN: lakemaple-sql-d7o3e2gevknog.database.windows.net
-- SQL Database Name: lakemaple-db
-- Storage Account Name: lakemaplestd7o3e2gevknog
-
-Validation
-- curl -I https://lakemaple-web-d7o3e2gevknog.azurewebsites.net returned HTTP/1.1 200 OK
-
-Assumptions / Limitations
-- This package provisions infrastructure and baseline configuration. Application feature development and content publishing are not included.
-- The database firewall posture is intentionally permissive to enable fast validation; it should be tightened for production environments.
