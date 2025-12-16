@@ -1,54 +1,96 @@
-Project: Lake Maple Web Portal Migration (Azure Bicep)
+## Lake Maple Web Portal Migration Baseline
 
-Objective
-Deliver a repeatable Azure provisioning baseline for a migrated web portal. The environment includes an App Service–hosted web application for a public landing page and admin access, an Azure SQL Database for relational application data, and a Storage Account for static assets such as images and PDF documents. The web tier is configured to reach the database using an encrypted connection and centralized application configuration.
+---
 
-Solution Overview
-This deployment establishes a clean separation of concerns:
-- Web tier: Hosts the portal entry points and provides the runtime boundary for future application releases.
-- Data tier: Stores structured operational data in Azure SQL.
-- Static content tier: Serves non-executable assets from blob storage for predictable performance and simplified content management.
+## 1) Project Summary
 
-Bicep Structure
-- main.bicep: Orchestrates the deployment and wires service configurations.
-- webapp.bicep: Provisions the App Service Plan and Web App with baseline security settings.
-- storage.bicep: Provisions the Storage Account and a blob container for static assets.
+This project delivers a reusable Azure provisioning baseline for migrating an existing web portal. The environment includes an App Service–hosted Web App, an Azure SQL Database for relational application data, and an Azure Storage Account for static assets. The web tier connects to the database through centralized App Service configuration using an encrypted connection string (Encrypt=True).
 
-Deployed Components
-1) Web Tier (App Service)
-- App Service Plan (Linux) and Web App
-- HTTPS-only enabled
-- Minimum TLS 1.2 enforced
-- FTPS disabled
+---
 
-2) Data Tier (Azure SQL)
-- Azure SQL Server and Azure SQL Database
-- Baseline firewall rule allows Azure-hosted services to reach the database
-- Web App connection string is applied through App Service configuration (connection strings) with Encrypt=True
+## 2) Solution Architecture (3-Tier)
 
-3) Static Assets (Azure Storage)
-- Storage Account (StorageV2)
-- Blob container: static-assets
-- Intended for images, rules PDFs, and other static files
+* **Web Tier (App Service Web App):** Hosts the public landing page and admin entry point.
+* **Data Tier (Azure SQL Database):** Stores relational operational data (e.g., registrations and summary records).
+* **Static Content Tier (Azure Storage):** Serves non-executable assets (images, rules PDF, and static files) from blob storage.
 
-Security Notes
-- Web access is restricted to HTTPS with a minimum TLS posture.
-- Database connectivity uses encrypted transport.
-- Sensitive configuration is managed via App Service configuration rather than hardcoding in application code.
-- Production hardening options: store secrets in Key Vault, enforce private connectivity (Private Endpoint/VNet integration), and replace broad firewall allowances with least-privilege network rules.
+This separation keeps web releases independent, preserves SQL for transactional workloads, and offloads static content to a dedicated service for predictable delivery.
 
-How to Deploy
-1) Create resource group:
-   az group create -n rg-lakemaple-bicep -l canadacentral
+---
 
-2) Deploy the Bicep template:
-   az deployment group create -g rg-lakemaple-bicep -f bicep/main.bicep -p bicep/main.parameters.json
+## 3) What Was Implemented in Bicep
 
-CI/CD Options (Implementation Approach)
-The deployment command can be executed from an automation pipeline to standardize releases across environments. A lightweight approach is a repository-native workflow (e.g., GitHub Actions) that authenticates to Azure and runs the same deployment command on versioned infrastructure changes. An enterprise-oriented alternative is Azure DevOps Pipelines, which provides stronger centralized governance (environments, approvals, and audit controls) at the cost of additional platform configuration.
+All resources are defined as Infrastructure as Code (IaC) using Azure Bicep. To reduce naming collisions, the deployment uses a deterministic uniqueness pattern based on `uniqueString(resourceGroup().id, namePrefix)`. The main template orchestrates the deployment, and selected components are separated into modular Bicep files.
 
-CI Automation (GitHub Actions)
-A GitHub Actions workflow is included to validate the infrastructure template on every push. The pipeline compiles the Bicep template (az bicep build) to catch syntax and dependency issues early and to keep infrastructure changes reviewable and repeatable. Automated Azure deployments can be enabled by adding an Azure identity (service principal or federated credentials) with appropriate RBAC permissions and then running the same az deployment group create command in the workflow.
+### Repository / Bicep Layout
 
-Data Movement / Transformation Approach
-Operational data lives in Azure SQL while static content lives in Azure Storage. For reporting or downstream analytics, a pragmatic approach is to periodically extract or incrementally capture SQL changes, land data into a storage zone, and apply transformations as needs evolve. This keeps the transactional database optimized for application workloads while enabling flexible reporting pipelines over time.
+* `bicep/main.bicep`
+  Orchestrates the deployment: parameters, SQL resources, connection string wiring, module calls, and outputs.
+* `bicep/webapp.bicep`
+  Provisions the App Service Plan + Web App with baseline security settings (HTTPS-only, TLS 1.2, FTPS disabled, Linux runtime Node 20 LTS).
+* `bicep/storage.bicep`
+  Provisions the Storage Account and creates the `static-assets` blob container.
+* `bicep/main.parameters.json`
+  Holds environment-specific values, including SQL admin credentials.
+
+### Web Tier Baseline Configuration
+
+* HTTPS-only enabled
+* Minimum TLS version set to 1.2
+* FTPS disabled
+* Linux App Service Plan with Web App (Node 20 LTS runtime)
+
+### Azure SQL Baseline Configuration
+
+* Azure SQL Server + Azure SQL Database created
+* **AllowAzureServices** firewall rule enabled for fast baseline connectivity
+* Web App SQL connection string applied via App Service configuration (Encrypt=True)
+
+### Storage Baseline Configuration
+
+* StorageV2 Storage Account created
+* Blob container: `static-assets` (for images, rules PDFs, and other static files)
+
+---
+
+## 4) Security Notes
+
+* Web access is enforced over HTTPS with minimum TLS 1.2.
+* Database connectivity uses encrypted transport (Encrypt=True).
+* Sensitive configuration is managed through App Service connection strings rather than hardcoding in application code.
+* Production hardening options: Key Vault for secrets, Private Endpoint/VNet integration, and replacing permissive firewall posture with least-privilege rules.
+
+---
+
+## 5) Deployment (Azure CLI)
+
+```bash
+az group create -n rg-lakemaple-bicep -l canadacentral
+az deployment group create -g rg-lakemaple-bicep -f bicep/main.bicep -p bicep/main.parameters.json
+```
+
+---
+
+## 6) CI/CD and Automation (GitHub Actions)
+
+GitHub Actions is used to validate infrastructure changes as part of a lightweight, repository-native automation approach.
+
+* **Bicep Validation:** A workflow runs on each push and executes `az bicep build` to confirm the template compiles and to catch issues early.
+* **Azure Deployment Approach:** A standard automation flow is checkout → Azure login (OIDC or service principal) → Bicep build/validate → `az deployment group create`. This requires an Azure identity with appropriate RBAC permissions.
+
+Example deployment command used by an automation pipeline:
+
+```bash
+az deployment group create -g rg-lakemaple-bicep -f bicep/main.bicep -p bicep/main.parameters.json
+```
+
+---
+
+## 7) Evidence and Outputs
+
+* **Web App URL:** [https://lakemaple-web-d7o3e2gevknog.azurewebsites.net](https://lakemaple-web-d7o3e2gevknog.azurewebsites.net)
+* **SQL Server FQDN:** lakemaple-sql-d7o3e2gevknog.database.windows.net
+* **SQL Database Name:** lakemaple-db
+* **Storage Account Name:** lakemaplestd7o3e2gevknog
+* **Validation:** `curl -I` returned `HTTP/1.1 200 OK`
+* **Repository:** [https://github.com/enezihe/lakemaple-webapp](https://github.com/enezihe/lakemaple-webapp)

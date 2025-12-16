@@ -18,16 +18,17 @@ resource storage 'Microsoft.Storage/storageAccounts@2023-01-01' = {
 }
 
 resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-01-01' = {
-  name: '${storage.name}/default'
+  name: 'default'
+  parent: storage
   properties: {}
 }
 
 resource staticContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-01-01' = {
-  name: '${storage.name}/default/static-assets'
+  name: 'static-assets'
+  parent: blobService
   properties: {
     publicAccess: 'Blob'
   }
-  dependsOn: [blobService]
 }
 
 output storageAccountName string = storage.name
