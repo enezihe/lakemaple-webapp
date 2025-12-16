@@ -12,10 +12,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Azure CLI
+      - name: Validate Bicep (build)
         uses: azure/CLI@v2
         with:
           inlineScript: |
             az version
-            az bicep install
+            az bicep version || az bicep install
+            az bicep upgrade
             az bicep build --file bicep/main.bicep
