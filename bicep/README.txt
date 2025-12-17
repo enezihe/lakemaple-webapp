@@ -1,128 +1,99 @@
-## Lake Maple Web Portal Migration Baseline
+Lake Maple Web Portal Migration Baseline (Azure Bicep)
 
 
-Lake Maple Web Portal Migration Baseline is an Infrastructure-as-Code package that provisions a consistent Azure environment for a web portal footprint. The goal is to stand up the platform layer first—web hosting, relational data storage, static asset storage, and operational visibility—so application releases can be delivered on top with minimal friction.
+1) Overview
+This project provides a repeatable Azure provisioning baseline for migrating a small web portal. The environment includes:
+- An App Service–hosted Web App for a public landing page and an admin entry point
+- An Azure SQL Database for relational application data
+- An Azure Storage Account for static assets such as images and PDF documents
 
----
+The objective is to establish a clean, deployable foundation that can be promoted across environments using the same Infrastructure as Code entry point.
 
-### Solution Approach
 
-The design follows a simple separation of responsibilities:
+2) Architecture
+The deployment follows a simple 3-tier separation:
+- Web tier (App Service Web App): runtime boundary for future releases
+- Data tier (Azure SQL Database): structured operational data
+- Static tier (Azure Storage): non-executable assets served from blob storage
 
-* **Web tier** provides the runtime boundary for the portal. It hosts the public landing surface and admin entry point and becomes the deployment target for future app releases.
-* **Data tier** keeps operational records in a relational store so the portal can model structured entities such as registrations and summary data.
-* **Static content tier** serves non-executable content from storage, allowing predictable delivery without coupling content management to the web runtime.
-* **Operations layer** centralizes logs and metrics for troubleshooting and service health tracking without requiring access to individual resources during an incident.
+This structure keeps web releases independent, preserves the database for transactional workloads, and offloads static content to a dedicated service.
 
-This structure supports incremental delivery: infrastructure first, then application code, then tighter security and network controls as the environment matures.
 
----
+3) Infrastructure as Code (Bicep)
+All infrastructure is defined using Azure Bicep. Resource naming uses a deterministic uniqueness pattern based on:
+uniqueString(resourceGroup().id, namePrefix)
 
-### Infrastructure Definition
+Bicep layout:
+- bicep/main.bicep
+  Orchestrates the deployment, wires configuration, and exposes outputs.
+- bicep/webapp.bicep
+  Creates the App Service Plan (Linux) and Web App with baseline settings:
+  HTTPS-only, minimum TLS 1.2, FTPS disabled, Node 20 LTS runtime.
+- bicep/storage.bicep
+  Creates the Storage Account and a blob container named "static-assets".
+- bicep/main.parameters.json
+  Holds environment-specific values such as SQL admin credentials.
 
-All resources are defined with Azure Bicep. Resource names are generated deterministically using a stable unique suffix to avoid collisions across deployments.
 
-**Bicep layout**
+4) Key Configuration Decisions
+Web App baseline:
+- HTTPS-only enabled
+- TLS 1.2 enforced
+- FTPS disabled
+- Linux runtime (Node 20 LTS)
 
-* `bicep/main.bicep`
-  Orchestrates the deployment: parameters, SQL resources, configuration wiring, monitoring resources, and module calls.
-* `bicep/webapp.bicep`
-  App Service Plan + Web App baseline configuration.
-* `bicep/storage.bicep`
-  Storage account + `static-assets` blob container.
-* `bicep/main.parameters.json`
-  Environment-specific inputs (including SQL admin credentials).
+Azure SQL baseline:
+- Azure SQL Server + Azure SQL Database
+- Firewall rule "AllowAzureServices" enabled for baseline connectivity
+- Web App SQL connection string applied through App Service connection strings
+  (encrypted transport via Encrypt=True)
 
----
+Storage baseline:
+- StorageV2 account
+- Blob container: static-assets
 
-### What Gets Provisioned
 
-#### Web Tier (App Service)
+5) Monitoring and Logging
+To support operational visibility, the deployment includes:
+- Log Analytics Workspace
+- Diagnostic Settings forwarding:
+  - Web App logs/metrics (HTTP, console/app logs, platform logs, AllMetrics)
+  - SQL Server metrics and supported logs into the workspace
 
-* Linux App Service Plan + Web App
-* HTTPS-only enforced
-* Minimum TLS 1.2
-* FTPS disabled
-* Runtime set for Node.js (Node 20 LTS)
+This enables centralized troubleshooting and basic operational reporting without changing application code.
 
-#### Data Tier (Azure SQL)
 
-* Azure SQL Server + Azure SQL Database
-* Baseline firewall posture allows Azure-hosted connectivity for validation and integration
-* Web App database access is configured through App Service **connection strings**, not in application code
-* Connection string enforces encrypted transport (`Encrypt=True`)
+6) Deployment Steps (Azure CLI)
+1. Create the resource group:
+   az group create -n rg-lakemaple-bicep -l canadacentral
 
-#### Static Assets (Azure Storage)
+2. Deploy the templates:
+   az deployment group create -g rg-lakemaple-bicep -f bicep/main.bicep -p bicep/main.parameters.json
 
-* Storage account (StorageV2)
-* Blob container: `static-assets`
-* Intended for images, rules PDFs, and other portal content that does not require execution
 
-#### Monitoring and Logging
+7) CI/CD (GitHub Actions)
+Repository-native automation is used to validate infrastructure changes:
+- .github/workflows/bicep-validate.yml
+  Runs on push to main and executes az bicep build against bicep/main.bicep.
 
-* Log Analytics Workspace for centralized telemetry
-* Diagnostic Settings configured to forward:
+A typical deployment pipeline structure is:
+checkout -> Azure authentication -> bicep build/validate -> az deployment group create
 
-  * Web App logs/metrics to Log Analytics
-  * SQL diagnostics/metrics to Log Analytics (using supported categories)
+Note: Azure deployment from GitHub Actions requires an Azure identity with appropriate RBAC permissions.
 
----
 
-### Deployment
+8) Deployment Evidence (Sample Outputs)
+- Web App URL: https://lakemaple-web-d7o3e2gevknog.azurewebsites.net
+- SQL Server FQDN: lakemaple-sql-d7o3e2gevknog.database.windows.net
+- SQL Database Name: lakemaple-db
+- Storage Account Name: lakemaplestd7o3e2gevknog
 
-Run from the repository root.
+Validation example:
+curl -I https://lakemaple-web-d7o3e2gevknog.azurewebsites.net
+(HTTP/1.1 200 OK)
 
-```bash
-az group create -n rg-lakemaple-bicep -l canadacentral
 
-az deployment group create \
-  -g rg-lakemaple-bicep \
-  -f bicep/main.bicep \
-  -p bicep/main.parameters.json
-```
-
-**Typical outputs**
-
-* Web App URL
-* SQL Server FQDN + database name
-* Storage account name
-* Log Analytics workspace name
-
----
-
-### CI/CD Automation (GitHub Actions)
-
-The repository includes GitHub Actions workflows under `.github/workflows/` to keep infrastructure changes reviewable and repeatable.
-
-Current automation focuses on infrastructure quality gates:
-
-* **Bicep validation** runs on push and compiles the templates (e.g., `az bicep build`) to catch template issues early.
-
-A deployment workflow typically follows this operating model:
-
-1. Checkout repository
-2. Authenticate to Azure (OIDC or service principal)
-3. Build/validate Bicep
-4. Run the same `az deployment group create` command used locally
-
-This keeps the deployment path consistent across local development and automated pipelines.
-
----
-
-### Operational Notes
-
-* Centralized diagnostics in Log Analytics supports faster root-cause analysis by consolidating App Service and SQL signals.
-* Capacity management is handled at the App Service Plan layer (SKU/capacity), with room to add autoscale rules as traffic patterns become known.
-* Secret management can be strengthened by moving credentials to Key Vault and replacing permissive firewall access with private connectivity patterns when needed.
-
----
-
-### Verification
-
-Example HTTP check against the Web App endpoint:
-
-```bash
-curl -I https://<WEB_APP_NAME>.azurewebsites.net
-```
-
-A healthy response returns `HTTP/1.1 200 OK`.
+9) Assumptions / Limitations
+- This package focuses on infrastructure provisioning and baseline configuration.
+- The SQL firewall posture is intentionally permissive for baseline connectivity and should be tightened for production
+  (e.g., Private Endpoint/VNet integration and least-privilege access patterns).

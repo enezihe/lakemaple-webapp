@@ -137,6 +137,7 @@ module storageMod './storage.bicep' = {
 // Outputs
 // --------------------
 output webAppUrl string = webappMod.outputs.webAppUrl
+output appInsightsName string = webappMod.outputs.appInsightsName
 output sqlServerFqdn string = '${sqlServer.name}.database.windows.net'
 output sqlDbName string = sqlDbName
 output storageAccountName string = storageMod.outputs.storageAccountName

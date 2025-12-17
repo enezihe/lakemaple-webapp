@@ -5,10 +5,9 @@ param unique string
 
 var planName = '${namePrefix}-asp-${unique}'
 var webAppName = '${namePrefix}-web-${unique}'
-
-// Monitoring: Application Insights (baseline)
 var appInsightsName = '${namePrefix}-appi-${unique}'
 
+// Monitoring: Application Insights
 resource appi 'Microsoft.Insights/components@2020-02-02' = {
   name: appInsightsName
   location: location
@@ -54,6 +53,10 @@ resource web 'Microsoft.Web/sites@2022-09-01' = {
           name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
           value: 'InstrumentationKey=${appi.properties.InstrumentationKey}'
         }
+        {
+          name: 'ApplicationInsightsAgent_EXTENSION_VERSION'
+          value: '~3'
+        }
       ]
     }
   }
@@ -62,3 +65,4 @@ resource web 'Microsoft.Web/sites@2022-09-01' = {
 output webAppName string = web.name
 output webAppUrl string = 'https://${web.properties.defaultHostName}'
 output appInsightsName string = appi.name
+output appServicePlanName string = plan.name
